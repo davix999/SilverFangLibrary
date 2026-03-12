@@ -1141,6 +1141,8 @@ function StoryScreen({ story, subscription, onBack, onUpdateStory, notify }) {
   const [loading, setLoading] = useState(false);
   const [sceneImage, setSceneImage] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [lastScenePrompt, setLastScenePrompt] = useState(null);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [showChars, setShowChars] = useState(false);
   const [storyTitle, setStoryTitle] = useState(story?.title || "Untitled Story");
@@ -1286,14 +1288,21 @@ RESPONSE FORMAT: Narrative prose only. No meta-commentary. Address the reader as
 const generateSceneImage = async (prompt) => {
   if (!prompt) return;
   setImageLoading(true);
+  setImageError(false);
   setSceneImage(null);
+  setLastScenePrompt(prompt);
 
   try {
     const imageUrl = await callGrokImageAPI(prompt);
-    setSceneImage({ prompt, url: imageUrl });
+    if (imageUrl) {
+      setSceneImage({ prompt, url: imageUrl });
+    } else {
+      setImageError(true);
+      setSceneImage({ prompt, url: null });
+    }
   } catch (err) {
     console.error(err);
-    // fallback to placeholder if you want
+    setImageError(true);
     setSceneImage({ prompt, url: null });
   } finally {
     setImageLoading(false);
@@ -1360,7 +1369,29 @@ const generateSceneImage = async (prompt) => {
                       RENDERING SCENE WITH GROK IMAGINE...
                     </p>
                   </div>
-                ) : sceneImage && (
+                ) : imageError || !sceneImage?.url ? (
+                  <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "#060d18" }}>
+                    <span style={{ fontSize: 28 }}>🌫️</span>
+                    <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 12, letterSpacing: 2 }}>SCENE FAILED TO RENDER</p>
+                    <button
+                      onClick={() => generateSceneImage(lastScenePrompt)}
+                      style={{
+                        padding: "6px 18px",
+                        background: "linear-gradient(135deg, #c9913a, #e8c060)",
+                        border: "none",
+                        borderRadius: 6,
+                        color: "#1a0f00",
+                        fontFamily: "'Cinzel', serif",
+                        fontSize: 11,
+                        letterSpacing: 1,
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ↻ RETRY SCENE
+                    </button>
+                  </div>
+                ) : (
                   <img
                     src={typeof sceneImage === "string" ? sceneImage : (sceneImage.url || sceneImage)}
                     alt="Generated story scene"
@@ -1370,10 +1401,7 @@ const generateSceneImage = async (prompt) => {
                       objectFit: "cover",
                       display: "block",
                     }}
-                    onError={(e) => {
-                      console.error("Image load failed");
-                      e.currentTarget.style.display = "none";
-                    }}
+                    onError={() => setImageError(true)}
                   />
                 )}
               </div>
