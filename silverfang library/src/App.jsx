@@ -1366,7 +1366,7 @@ const generateSceneImage = async (prompt) => {
       ) : sceneImage && (
         <img
           src={typeof sceneImage === "string" ? sceneImage : (sceneImage.url || sceneImage)}
-          alt="Current story scene"
+          alt="Generated story scene"
           style={{
             width: "100%",
             height: "100%",
@@ -1374,18 +1374,14 @@ const generateSceneImage = async (prompt) => {
             display: "block",
           }}
           onError={(e) => {
-            console.error("Image failed to load");
+            console.error("Image load failed");
             e.currentTarget.style.display = "none";
-            // Optional nice fallback
-            const parent = e.currentTarget.parentElement;
-            if (parent) parent.innerHTML = `<div style="color:#666;padding:40px;text-align:center;font-family:'Cinzel',serif;">Image failed to load<br>Check console</div>`;
           }}
         />
       )}
     </div>
   </div>
 )}
-
           {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
             {!started ? (
