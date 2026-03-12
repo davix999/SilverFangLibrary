@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ============================================================
+// RESPONSIVE HOOK
+// ============================================================
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
+
+// ============================================================
 // GROK API CONFIGURATION
 // ============================================================
 const GROK_CONFIG = {
@@ -13,11 +26,11 @@ const GROK_CONFIG = {
 
 const callGrokImageAPI = async (scenePrompt) => {
   if (!GROK_CONFIG.apiKey) {
-    throw new Error("Missing VITE_GROK_API_KEY in your .env file");
+    throw new Error("Missing VITE_GROK_API_KEY");
   }
 
   console.log("🎨 Generating image with model:", GROK_CONFIG.imageModel);
-  console.log("Prompt preview:", scenePrompt.substring(0, 150) + "...");
+  console.log("Prompt preview:", scenePrompt.substring(0, 150));
 
   const res = await fetch(`${GROK_CONFIG.baseUrl}/images/generations`, {
     method: "POST",
@@ -29,29 +42,45 @@ const callGrokImageAPI = async (scenePrompt) => {
       model: GROK_CONFIG.imageModel,
       prompt: scenePrompt,
       n: 1,
-      size: "1024x1024",
-      response_format: "url",
+      // omit response_format — let xAI use its default (b64_json or url)
     }),
   });
 
+  const responseText = await res.text();
+  console.log("📦 Raw image API response:", res.status, responseText.substring(0, 400));
+
   if (!res.ok) {
-    const errorText = await res.text();
-    console.error("❌ Image API failed:", res.status, errorText);
-    
-    if (res.status === 401) throw new Error("Invalid API key — check your .env");
-    if (res.status === 402) throw new Error("Out of credits for image generation");
-    if (res.status === 429) throw new Error("Rate limit hit — wait a few seconds");
-    
-    throw new Error(`Image generation failed (${res.status}): ${errorText}`);
+    let detail = responseText;
+    try { detail = JSON.parse(responseText)?.error?.message || responseText; } catch {}
+    if (res.status === 401) throw new Error(`Auth failed (401): ${detail}`);
+    if (res.status === 402) throw new Error(`Out of credits (402): ${detail}`);
+    if (res.status === 404) throw new Error(`Model not found (404) — check imageModel name: "${GROK_CONFIG.imageModel}"`);
+    if (res.status === 429) throw new Error(`Rate limited (429): ${detail}`);
+    throw new Error(`Image API ${res.status}: ${detail}`);
   }
 
-  const data = await res.json();
+  let data;
+  try { data = JSON.parse(responseText); } catch {
+    throw new Error(`Non-JSON response: ${responseText.substring(0, 200)}`);
+  }
+
+  console.log("✅ Parsed image response keys:", Object.keys(data));
+
+  // Handle URL response
   const imageUrl = data.data?.[0]?.url;
+  if (imageUrl) {
+    console.log("✅ Got URL:", imageUrl.substring(0, 80));
+    return imageUrl;
+  }
 
-  if (!imageUrl) throw new Error("No image URL returned from xAI");
+  // Handle base64 response
+  const b64 = data.data?.[0]?.b64_json;
+  if (b64) {
+    console.log("✅ Got b64_json, converting to data URL");
+    return `data:image/png;base64,${b64}`;
+  }
 
-  console.log("✅ Image ready:", imageUrl);
-  return imageUrl;
+  throw new Error(`Unexpected response shape: ${JSON.stringify(data).substring(0, 300)}`);
 };
 
 // Logo
@@ -439,6 +468,19 @@ export default function StoryForgeApp() {
         }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         option { background: #0a1120; }
+        /* ── Mobile touch targets & layout ── */
+        button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+        @media (max-width: 640px) {
+          .btn-primary { padding: 12px 20px; font-size: 13px; letter-spacing: 1px; }
+          .btn-ghost   { padding: 9px 16px;  font-size: 12px; }
+          .card        { padding: 16px; }
+          .mobile-stack { flex-direction: column !important; align-items: flex-start !important; }
+          .mobile-hide  { display: none !important; }
+          .mobile-full  { width: 100% !important; }
+          .mobile-sm-text { font-size: 13px !important; }
+          .mobile-pad { padding: 16px 14px !important; }
+          .mobile-gap-sm { gap: 8px !important; }
+        }
       `}</style>
 
       {screens[screen] || screens.landing}
@@ -690,29 +732,30 @@ function SubscriptionScreen({ currentTier, onSelect }) {
 function DashboardScreen({ user, subscription, stories, onNewStory, onOpenStory, onCommunity, onSettings, notify }) {
   const tier = SUBSCRIPTION_TIERS[subscription];
   const canCreate = stories.length < tier.stories;
+  const isMobile = useIsMobile();
 
   return (
-    <div style={{ minHeight: "100vh", padding: "24px 20px", maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", padding: isMobile ? "16px 14px" : "24px 20px", maxWidth: 1000, margin: "0 auto" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", marginBottom: isMobile ? 24 : 40, gap: isMobile ? 12 : 0 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <img src={SILVERFANG_LOGO} alt="logo" style={{ width: 44, height: 44, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(59,130,246,0.5))" }} />
+            <img src={SILVERFANG_LOGO} alt="logo" style={{ width: isMobile ? 36 : 44, height: isMobile ? 36 : 44, objectFit: "contain", filter: "drop-shadow(0 0 8px rgba(59,130,246,0.5))" }} />
             <div>
               <p style={{ fontFamily: "'Cinzel', serif", fontSize: 9, color: "#4a7fa8", letterSpacing: 4, textTransform: "uppercase" }}>DIREWOLF AI</p>
-              <h1 style={{ fontFamily: "'Cinzel', serif", color: "#e8f4ff", fontSize: 22, letterSpacing: 2, lineHeight: 1.1 }}>SILVERFANG LIBRARY</h1>
+              <h1 style={{ fontFamily: "'Cinzel', serif", color: "#e8f4ff", fontSize: isMobile ? 17 : 22, letterSpacing: 2, lineHeight: 1.1 }}>SILVERFANG LIBRARY</h1>
             </div>
           </div>
-          <p style={{ color: "#6b7280", fontSize: 14, marginTop: 4 }}>
+          <p style={{ color: "#6b7280", fontSize: 13, marginTop: 4 }}>
             Welcome back, <span style={{ color: "#c9bfa8" }}>{user?.name}</span> ·
             <span style={{ color: CONTENT_RATINGS[user?.contentRating]?.color, marginLeft: 6 }}>
               {CONTENT_RATINGS[user?.contentRating]?.label}
             </span>
           </p>
         </div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button className="btn-ghost" onClick={onCommunity} style={{ fontSize: 13 }}>👥 Community</button>
-          <button className="btn-ghost" onClick={onSettings} style={{ fontSize: 13 }}>⚙️ {tier.name}</button>
+        <div style={{ display: "flex", gap: 8, width: isMobile ? "100%" : "auto" }}>
+          <button className="btn-ghost" onClick={onCommunity} style={{ fontSize: 12, flex: isMobile ? 1 : "unset" }}>👥 Community</button>
+          <button className="btn-ghost" onClick={onSettings} style={{ fontSize: 12, flex: isMobile ? 1 : "unset" }}>⚙️ {tier.name}</button>
         </div>
       </div>
 
@@ -1142,6 +1185,7 @@ function StoryScreen({ story, subscription, onBack, onUpdateStory, notify }) {
   const [sceneImage, setSceneImage] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [imageErrorMsg, setImageErrorMsg] = useState(null);
   const [lastScenePrompt, setLastScenePrompt] = useState(null);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const [showChars, setShowChars] = useState(false);
@@ -1151,6 +1195,7 @@ function StoryScreen({ story, subscription, onBack, onUpdateStory, notify }) {
   const [showOtherInput, setShowOtherInput] = useState(false);
   const messagesEndRef = useRef(null);
   const tier = SUBSCRIPTION_TIERS[subscription];
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1289,6 +1334,7 @@ const generateSceneImage = async (prompt) => {
   if (!prompt) return;
   setImageLoading(true);
   setImageError(false);
+  setImageErrorMsg(null);
   setSceneImage(null);
   setLastScenePrompt(prompt);
 
@@ -1298,11 +1344,13 @@ const generateSceneImage = async (prompt) => {
       setSceneImage({ prompt, url: imageUrl });
     } else {
       setImageError(true);
+      setImageErrorMsg("No URL returned from API");
       setSceneImage({ prompt, url: null });
     }
   } catch (err) {
     console.error(err);
     setImageError(true);
+    setImageErrorMsg(err.message || "Unknown error");
     setSceneImage({ prompt, url: null });
   } finally {
     setImageLoading(false);
@@ -1312,57 +1360,80 @@ const generateSceneImage = async (prompt) => {
   const genre = STORY_GENRES[story?.genre];
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100dvh", display: "flex", flexDirection: "column" }}>
       {/* Header */}
-      <div style={{ padding: "16px 24px", background: "#080c14", borderBottom: "1px solid #1e2d3d", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button className="btn-ghost" onClick={onBack} style={{ padding: "6px 12px", fontSize: 12 }}>←</button>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <img src={SILVERFANG_LOGO} alt="logo" style={{ width: 28, height: 28, objectFit: "contain", filter: "drop-shadow(0 0 6px rgba(59,130,246,0.5))" }} />
-              <h2 style={{ fontFamily: "'Cinzel', serif", color: "#e8f4ff", fontSize: 17, letterSpacing: 1 }}>{storyTitle}</h2>
+      <div style={{ padding: isMobile ? "10px 12px" : "16px 24px", background: "#080c14", borderBottom: "1px solid #1e2d3d", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 16, minWidth: 0 }}>
+          <button className="btn-ghost" onClick={onBack} style={{ padding: "6px 10px", fontSize: 12, flexShrink: 0 }}>←</button>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {!isMobile && <img src={SILVERFANG_LOGO} alt="logo" style={{ width: 24, height: 24, objectFit: "contain", filter: "drop-shadow(0 0 6px rgba(59,130,246,0.5))", flexShrink: 0 }} />}
+              <h2 style={{ fontFamily: "'Cinzel', serif", color: "#e8f4ff", fontSize: isMobile ? 14 : 17, letterSpacing: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{storyTitle}</h2>
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <span className="tag">{genre?.icon} {genre?.label?.replace(/^\S+ /, "")}</span>
-              <span className="tag" style={{ color: CONTENT_RATINGS[story?.rating]?.color }}>{story?.rating}</span>
-              {story?.multiplayer && <span className="tag" style={{ color: "#3b82f6" }}>👥</span>}
+            <div style={{ display: "flex", gap: 6, marginTop: 3 }}>
+              <span className="tag" style={{ fontSize: 11, padding: "2px 8px" }}>{genre?.icon} {genre?.label?.replace(/^\S+ /, "")}</span>
+              <span className="tag" style={{ color: CONTENT_RATINGS[story?.rating]?.color, fontSize: 11, padding: "2px 8px" }}>{story?.rating}</span>
+              {story?.multiplayer && <span className="tag" style={{ color: "#3b82f6", fontSize: 11, padding: "2px 8px" }}>👥</span>}
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button className="btn-ghost" onClick={() => setShowChars(!showChars)} style={{ fontSize: 12 }}>
-            👤 {characters.length} Characters
+        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+          <button className="btn-ghost" onClick={() => setShowChars(!showChars)} style={{ fontSize: 11, padding: "6px 10px" }}>
+            👤{!isMobile && ` ${characters.length} Characters`}
+            {isMobile && ` ${characters.length}`}
           </button>
-          {subscription !== "free" && (
-            <button className="btn-ghost" onClick={() => setAudioPlaying(!audioPlaying)} style={{ fontSize: 12, color: audioPlaying ? "#22c55e" : "#c9913a" }}>
-              {audioPlaying ? "🔊 Narrating" : "🔇 Narration"}
+          {subscription !== "free" && !isMobile && (
+            <button className="btn-ghost" onClick={() => setAudioPlaying(!audioPlaying)} style={{ fontSize: 11, padding: "6px 10px", color: audioPlaying ? "#22c55e" : "#c9913a" }}>
+              {audioPlaying ? "🔊" : "🔇"}
             </button>
           )}
         </div>
       </div>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Character Panel */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+        {/* Character Panel — sidebar on desktop, overlay on mobile */}
         {showChars && (
-          <div style={{ width: 220, background: "#060d18", borderRight: "1px solid #1e2d3d", padding: 16, overflowY: "auto", flexShrink: 0 }}>
-            <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#c9913a", letterSpacing: 2, marginBottom: 16 }}>CHARACTERS</h3>
-            {characters.length === 0 ? (
-              <p style={{ color: "#3a4a5a", fontSize: 13, fontStyle: "italic" }}>Characters will appear here as they're introduced</p>
-            ) : characters.map(c => (
-              <div key={c.name} style={{ marginBottom: 16, padding: "12px", background: "#0a1120", borderRadius: 6, border: "1px solid #1e2d3d" }}>
-                <p style={{ fontFamily: "'Cinzel', serif", color: "#c9bfa8", fontSize: 14, marginBottom: 4 }}>{c.name}</p>
-                <p style={{ color: "#6b7280", fontSize: 12 }}>{c.description}</p>
+          <>
+            {isMobile && (
+              <div
+                onClick={() => setShowChars(false)}
+                style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 10 }}
+              />
+            )}
+            <div style={{
+              width: isMobile ? "80%" : 220,
+              maxWidth: isMobile ? 300 : "unset",
+              background: "#060d18",
+              borderRight: "1px solid #1e2d3d",
+              padding: 16,
+              overflowY: "auto",
+              flexShrink: 0,
+              ...(isMobile ? { position: "absolute", top: 0, left: 0, bottom: 0, zIndex: 11 } : {}),
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h3 style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#c9913a", letterSpacing: 2 }}>CHARACTERS</h3>
+                {isMobile && (
+                  <button onClick={() => setShowChars(false)} style={{ background: "none", border: "none", color: "#6b7280", fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
+                )}
               </div>
-            ))}
-          </div>
+              {characters.length === 0 ? (
+                <p style={{ color: "#3a4a5a", fontSize: 13, fontStyle: "italic" }}>Characters will appear here as they're introduced</p>
+              ) : characters.map(c => (
+                <div key={c.name} style={{ marginBottom: 16, padding: "12px", background: "#0a1120", borderRadius: 6, border: "1px solid #1e2d3d" }}>
+                  <p style={{ fontFamily: "'Cinzel', serif", color: "#c9bfa8", fontSize: 14, marginBottom: 4 }}>{c.name}</p>
+                  <p style={{ color: "#6b7280", fontSize: 12 }}>{c.description}</p>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {/* Main Content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Scene Image */}
           {(sceneImage || imageLoading) && (
-            <div style={{ padding: "16px 24px", background: "#060d18", borderBottom: "1px solid #1e2d3d", flexShrink: 0 }}>
-              <div style={{ height: 180, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
+            <div style={{ padding: isMobile ? "8px 12px" : "16px 24px", background: "#060d18", borderBottom: "1px solid #1e2d3d", flexShrink: 0 }}>
+              <div style={{ height: isMobile ? 130 : 180, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
                 {imageLoading ? (
                   <div className="shimmer" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 13, letterSpacing: 2 }}>
@@ -1370,22 +1441,23 @@ const generateSceneImage = async (prompt) => {
                     </p>
                   </div>
                 ) : imageError || !sceneImage?.url ? (
-                  <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, background: "#060d18" }}>
-                    <span style={{ fontSize: 28 }}>🌫️</span>
-                    <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 12, letterSpacing: 2 }}>SCENE FAILED TO RENDER</p>
+                  <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, background: "#060d18", padding: "0 16px" }}>
+                    <span style={{ fontSize: 24 }}>🌫️</span>
+                    <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 11, letterSpacing: 2 }}>SCENE FAILED TO RENDER</p>
+                    {imageErrorMsg && (
+                      <p style={{ color: "#ef4444", fontSize: 11, fontFamily: "monospace", textAlign: "center", maxWidth: "100%", wordBreak: "break-word", opacity: 0.8 }}>
+                        {imageErrorMsg}
+                      </p>
+                    )}
                     <button
                       onClick={() => generateSceneImage(lastScenePrompt)}
                       style={{
                         padding: "6px 18px",
                         background: "linear-gradient(135deg, #c9913a, #e8c060)",
-                        border: "none",
-                        borderRadius: 6,
-                        color: "#1a0f00",
-                        fontFamily: "'Cinzel', serif",
-                        fontSize: 11,
-                        letterSpacing: 1,
-                        cursor: "pointer",
-                        fontWeight: "bold",
+                        border: "none", borderRadius: 6,
+                        color: "#1a0f00", fontFamily: "'Cinzel', serif",
+                        fontSize: 11, letterSpacing: 1,
+                        cursor: "pointer", fontWeight: "bold",
                       }}
                     >
                       ↻ RETRY SCENE
@@ -1408,7 +1480,7 @@ const generateSceneImage = async (prompt) => {
             </div>
           )}
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "14px 12px" : "24px" }}>
             {!started ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 24 }}>
                 <div style={{ fontSize: 64 }}>{genre?.icon}</div>
@@ -1473,19 +1545,19 @@ const generateSceneImage = async (prompt) => {
 
           {/* Choice / Input Area */}
           {started && (
-            <div style={{ padding: "20px 24px", background: "#060d18", borderTop: "1px solid #1e2d3d", flexShrink: 0 }}>
+            <div style={{ padding: isMobile ? "12px 10px" : "20px 24px", background: "#060d18", borderTop: "1px solid #1e2d3d", flexShrink: 0 }}>
               <div style={{ maxWidth: 720, margin: "0 auto" }}>
 
                 {/* AI-generated choices */}
                 {!loading && currentChoices && !showOtherInput && (
                   <div style={{ animation: "fadeIn 0.4s ease" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: isMobile ? 10 : 14 }}>
                       <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg, transparent, #1e2d3d)" }} />
                       <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: "#6b7280", letterSpacing: 2, whiteSpace: "nowrap" }}>CHOOSE YOUR PATH</span>
                       <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg, #1e2d3d, transparent)" }} />
                     </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 7 : 10, marginBottom: 10 }}>
                       {currentChoices.map((choice, idx) => {
                         const icons = ["⚔️", "🛡️", "✨"];
                         const labels = ["Bold", "Measured", "Unexpected"];
@@ -1498,34 +1570,39 @@ const generateSceneImage = async (prompt) => {
                               background: "linear-gradient(135deg, #0d1827, #111520)",
                               border: `1px solid ${colors[idx]}33`,
                               borderRadius: 8,
-                              padding: "14px 18px",
+                              padding: isMobile ? "10px 12px" : "14px 18px",
                               cursor: "pointer",
                               textAlign: "left",
                               transition: "all 0.2s",
                               display: "flex",
                               alignItems: "flex-start",
-                              gap: 14,
+                              gap: isMobile ? 10 : 14,
+                              minHeight: 48,
                             }}
                             onMouseEnter={e => {
-                              e.currentTarget.style.borderColor = `${colors[idx]}88`;
-                              e.currentTarget.style.background = `linear-gradient(135deg, #0d1827, ${colors[idx]}11)`;
-                              e.currentTarget.style.transform = "translateX(3px)";
+                              if (!isMobile) {
+                                e.currentTarget.style.borderColor = `${colors[idx]}88`;
+                                e.currentTarget.style.background = `linear-gradient(135deg, #0d1827, ${colors[idx]}11)`;
+                                e.currentTarget.style.transform = "translateX(3px)";
+                              }
                             }}
                             onMouseLeave={e => {
-                              e.currentTarget.style.borderColor = `${colors[idx]}33`;
-                              e.currentTarget.style.background = "linear-gradient(135deg, #0d1827, #111520)";
-                              e.currentTarget.style.transform = "translateX(0)";
+                              if (!isMobile) {
+                                e.currentTarget.style.borderColor = `${colors[idx]}33`;
+                                e.currentTarget.style.background = "linear-gradient(135deg, #0d1827, #111520)";
+                                e.currentTarget.style.transform = "translateX(0)";
+                              }
                             }}
                           >
                             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0, paddingTop: 2 }}>
-                              <span style={{ fontSize: 18 }}>{icons[idx]}</span>
+                              <span style={{ fontSize: isMobile ? 16 : 18 }}>{icons[idx]}</span>
                               <span style={{ fontFamily: "'Cinzel', serif", fontSize: 9, color: colors[idx], letterSpacing: 1 }}>{labels[idx]}</span>
                             </div>
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                               <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: colors[idx], letterSpacing: 1, display: "block", marginBottom: 4 }}>
                                 OPTION {idx + 1}
                               </span>
-                              <p style={{ color: "#c9bfa8", fontSize: 15, lineHeight: 1.55, fontFamily: "'Crimson Text', serif" }}>{choice}</p>
+                              <p style={{ color: "#c9bfa8", fontSize: isMobile ? 14 : 15, lineHeight: 1.5, fontFamily: "'Crimson Text', serif" }}>{choice}</p>
                             </div>
                           </button>
                         );
@@ -1538,26 +1615,27 @@ const generateSceneImage = async (prompt) => {
                           background: "#0a0f1a",
                           border: "1px dashed #2a3d4f",
                           borderRadius: 8,
-                          padding: "14px 18px",
+                          padding: isMobile ? "10px 12px" : "14px 18px",
                           cursor: "pointer",
                           textAlign: "left",
                           transition: "all 0.2s",
                           display: "flex",
                           alignItems: "center",
-                          gap: 14,
+                          gap: isMobile ? 10 : 14,
+                          minHeight: 48,
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = "#c9913a55"; e.currentTarget.style.background = "#0d1520"; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = "#2a3d4f"; e.currentTarget.style.background = "#0a0f1a"; }}
+                        onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.borderColor = "#c9913a55"; e.currentTarget.style.background = "#0d1520"; } }}
+                        onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.borderColor = "#2a3d4f"; e.currentTarget.style.background = "#0a0f1a"; } }}
                       >
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0, paddingTop: 2 }}>
-                          <span style={{ fontSize: 18 }}>✍️</span>
+                          <span style={{ fontSize: isMobile ? 16 : 18 }}>✍️</span>
                           <span style={{ fontFamily: "'Cinzel', serif", fontSize: 9, color: "#6b7280", letterSpacing: 1 }}>Custom</span>
                         </div>
                         <div>
                           <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: "#6b7280", letterSpacing: 1, display: "block", marginBottom: 4 }}>
-                            OPTION 4 — WRITE YOUR OWN
+                            {isMobile ? "WRITE YOUR OWN" : "OPTION 4 — WRITE YOUR OWN"}
                           </span>
-                          <p style={{ color: "#6b7280", fontSize: 15, lineHeight: 1.55, fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
+                          <p style={{ color: "#6b7280", fontSize: isMobile ? 14 : 15, lineHeight: 1.5, fontFamily: "'Crimson Text', serif", fontStyle: "italic" }}>
                             Something else entirely... forge your own path
                           </p>
                         </div>
@@ -1570,23 +1648,23 @@ const generateSceneImage = async (prompt) => {
                 {!loading && (showOtherInput || !currentChoices) && (
                   <div style={{ animation: "fadeIn 0.3s ease" }}>
                     {showOtherInput && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                         <button
                           onClick={() => setShowOtherInput(false)}
                           style={{ background: "none", border: "1px solid #1e2d3d", borderRadius: 4, color: "#6b7280", padding: "4px 10px", fontSize: 12, cursor: "pointer", fontFamily: "'Cinzel', serif", letterSpacing: 1 }}
                         >
-                          ← Back to Choices
+                          ← Back
                         </button>
                         <span style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: "#c9913a", letterSpacing: 2 }}>WRITE YOUR OWN PATH</span>
                       </div>
                     )}
-                    <div style={{ display: "flex", gap: 12 }}>
+                    <div style={{ display: "flex", gap: 10 }}>
                       <textarea
                         value={input}
                         onChange={e => setInput(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                        placeholder={showOtherInput ? "Describe exactly what you do — no limits..." : "What do you do? Describe your action, speak dialogue, or ask questions..."}
-                        rows={3}
+                        placeholder={showOtherInput ? "Describe exactly what you do — no limits..." : "What do you do?"}
+                        rows={isMobile ? 2 : 3}
                         style={{ resize: "none", fontSize: 15, lineHeight: 1.6 }}
                         autoFocus={showOtherInput}
                       />
@@ -1594,7 +1672,8 @@ const generateSceneImage = async (prompt) => {
                         onClick={() => sendMessage()}
                         disabled={!input.trim()}
                         style={{
-                          width: 56,
+                          width: isMobile ? 48 : 56,
+                          minHeight: 48,
                           background: !input.trim() ? "#1e2d3d" : "linear-gradient(135deg, #c9913a, #e8c060)",
                           border: "none", borderRadius: 6,
                           cursor: !input.trim() ? "not-allowed" : "pointer",
@@ -1605,9 +1684,11 @@ const generateSceneImage = async (prompt) => {
                         ➤
                       </button>
                     </div>
-                    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-                      <span style={{ fontSize: 12, color: "#3a4a5a" }}>Shift+Enter for new line · Enter to send</span>
-                    </div>
+                    {!isMobile && (
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+                        <span style={{ fontSize: 12, color: "#3a4a5a" }}>Shift+Enter for new line · Enter to send</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
