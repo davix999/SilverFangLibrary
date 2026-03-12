@@ -1354,34 +1354,31 @@ const generateSceneImage = async (prompt) => {
           {(sceneImage || imageLoading) && (
             <div style={{ padding: "16px 24px", background: "#060d18", borderBottom: "1px solid #1e2d3d", flexShrink: 0 }}>
               <div style={{ height: 180, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
-{(sceneImage || imageLoading) && (
-  <div style={{ padding: "16px 24px", background: "#060d18", borderBottom: "1px solid #1e2d3d", flexShrink: 0 }}>
-    <div style={{ height: 180, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
-      {imageLoading ? (
-        <div className="shimmer" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 13, letterSpacing: 2 }}>
-            RENDERING SCENE WITH GROK IMAGINE...
-          </p>
-        </div>
-      ) : sceneImage && (
-        <img
-          src={typeof sceneImage === "string" ? sceneImage : (sceneImage.url || sceneImage)}
-          alt="Generated story scene"
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-          onError={(e) => {
-            console.error("Image load failed");
-            e.currentTarget.style.display = "none";
-          }}
-        />
-      )}
-    </div>
-  </div>
-)}
+                {imageLoading ? (
+                  <div className="shimmer" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 13, letterSpacing: 2 }}>
+                      RENDERING SCENE WITH GROK IMAGINE...
+                    </p>
+                  </div>
+                ) : sceneImage && (
+                  <img
+                    src={typeof sceneImage === "string" ? sceneImage : (sceneImage.url || sceneImage)}
+                    alt="Generated story scene"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                    onError={(e) => {
+                      console.error("Image load failed");
+                      e.currentTarget.style.display = "none";
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          )}
           {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
             {!started ? (
