@@ -7,10 +7,18 @@ const GROK_CONFIG = {
   apiKey: import.meta.env.VITE_GROK_API_KEY,
   baseUrl: "https://api.x.ai/v1",
   model: "grok-3",
-  imageModel: "grok-2-image", // Grok image generation model
+  imageModel: "grok-imagine-image",        // ← OFFICIAL CURRENT MODEL (March 2026)
+  // imageModel: "grok-imagine-image-pro", // ← switch to this for higher quality (costs more)
 };
 
 const callGrokImageAPI = async (scenePrompt) => {
+  if (!GROK_CONFIG.apiKey) {
+    throw new Error("Missing VITE_GROK_API_KEY in your .env file");
+  }
+
+  console.log("🎨 Generating image with model:", GROK_CONFIG.imageModel);
+  console.log("Prompt preview:", scenePrompt.substring(0, 150) + "...");
+
   const res = await fetch(`${GROK_CONFIG.baseUrl}/images/generations`, {
     method: "POST",
     headers: {
@@ -18,17 +26,32 @@ const callGrokImageAPI = async (scenePrompt) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: GROK_CONFIG.imageModel,   // "grok-2-image"
+      model: GROK_CONFIG.imageModel,
       prompt: scenePrompt,
       n: 1,
-      size: "1024x1024",               // or whatever your plan supports
+      size: "1024x1024",
       response_format: "url",
     }),
   });
 
-  if (!res.ok) throw new Error("Image generation failed");
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("❌ Image API failed:", res.status, errorText);
+    
+    if (res.status === 401) throw new Error("Invalid API key — check your .env");
+    if (res.status === 402) throw new Error("Out of credits for image generation");
+    if (res.status === 429) throw new Error("Rate limit hit — wait a few seconds");
+    
+    throw new Error(`Image generation failed (${res.status}): ${errorText}`);
+  }
+
   const data = await res.json();
-  return data.data[0].url;   // xAI returns OpenAI-compatible format
+  const imageUrl = data.data?.[0]?.url;
+
+  if (!imageUrl) throw new Error("No image URL returned from xAI");
+
+  console.log("✅ Image ready:", imageUrl);
+  return imageUrl;
 };
 
 // Logo
@@ -1331,23 +1354,37 @@ const generateSceneImage = async (prompt) => {
           {(sceneImage || imageLoading) && (
             <div style={{ padding: "16px 24px", background: "#060d18", borderBottom: "1px solid #1e2d3d", flexShrink: 0 }}>
               <div style={{ height: 180, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
-                {imageLoading ? (
-                  <div className="shimmer" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 13, letterSpacing: 2 }}>RENDERING SCENE...</p>
-                  </div>
-                ) : sceneImage && (
-                  <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, #0a1827, #1a0a0a, #0a1a0a)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8 }}>
-                    {/* Placeholder - replace with actual Grok image URL */}
-                    <div style={{ fontSize: 32 }}>{genre?.icon}</div>
-                    <p style={{ color: "#6b7280", fontSize: 12, fontStyle: "italic", textAlign: "center", maxWidth: 400, padding: "0 20px", lineHeight: 1.4 }}>
-                      🖼️ Scene: {sceneImage.prompt?.slice(0, 100)}...
-                    </p>
-                    <p style={{ color: "#3a4a5a", fontSize: 11 }}>Grok image API renders here</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+{(sceneImage || imageLoading) && (
+  <div style={{ padding: "16px 24px", background: "#060d18", borderBottom: "1px solid #1e2d3d", flexShrink: 0 }}>
+    <div style={{ height: 180, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
+      {imageLoading ? (
+        <div className="shimmer" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 13, letterSpacing: 2 }}>
+            RENDERING SCENE WITH GROK IMAGINE...
+          </p>
+        </div>
+      ) : sceneImage && (
+        <img
+          src={typeof sceneImage === "string" ? sceneImage : (sceneImage.url || sceneImage)}
+          alt="Current story scene"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+          onError={(e) => {
+            console.error("Image failed to load");
+            e.currentTarget.style.display = "none";
+            // Optional nice fallback
+            const parent = e.currentTarget.parentElement;
+            if (parent) parent.innerHTML = `<div style="color:#666;padding:40px;text-align:center;font-family:'Cinzel',serif;">Image failed to load<br>Check console</div>`;
+          }}
+        />
+      )}
+    </div>
+  </div>
+)}
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
