@@ -550,7 +550,7 @@ export default function StoryForgeApp() {
     setTimeout(() => setNotification(null), 3200);
   };
 
-  const handleAuthComplete = (firebaseUser) => {
+  const handleLandingComplete = (firebaseUser) => {
     setUser({ ...firebaseUser, contentRating: "T" });
     navigate("subscription");
   };
@@ -591,9 +591,9 @@ export default function StoryForgeApp() {
   const renderScreen = () => {
     switch (screen) {
       case "landing":
-        return <LandingScreen onStart={() => navigate("auth")} />;
+        return <LandingScreen onStart={handleLandingComplete} />;
       case "auth":
-        return <AuthScreen onComplete={handleAuthComplete} onBack={goBack} />;
+        return <LandingScreen onStart={handleLandingComplete} />;
       case "subscription":
         return <SubscriptionScreen currentTier={subscription} onSelect={handleSubscriptionSelect} onBack={goBack} />;
       case "user_setup":
@@ -745,28 +745,73 @@ export default function StoryForgeApp() {
 // LANDING SCREEN (unchanged from original)
 // ============================================================
 function LandingScreen({ onStart }) {
+  const [loading, setLoading] = React.useState(null);
+  const [error, setError] = React.useState("");
+
+  const handleOAuth = async (provider) => {
+    setLoading(provider);
+    setError("");
+    try {
+      const user = await firebaseSignIn(provider);
+      onStart(user);
+    } catch (e) {
+      setError("Sign-in failed. Please try again.");
+    }
+    setLoading(null);
+  };
+
+  const oauthProviders = [
+    { id: "google",    label: "Continue with Google",    icon: "G", color: "#4285f4" },
+    { id: "apple",     label: "Continue with Apple",     icon: "🍎", color: "#e8dcc8" },
+    { id: "microsoft", label: "Continue with Microsoft", icon: "⊞", color: "#00a4ef" },
+  ];
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 30% 20%, rgba(59,130,246,0.10) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(59,130,246,0.06) 0%, transparent 60%)", pointerEvents: "none" }} />
       {["✦","◈","⊕","✧","◆","⊗"].map((r, i) => (
         <div key={i} style={{ position: "absolute", color: "#c9913a22", fontSize: "24px", top: `${15 + i * 15}%`, left: `${5 + (i % 2) * 88}%`, animation: `pulse ${2 + i * 0.5}s infinite` }}>{r}</div>
       ))}
-      <div style={{ textAlign: "center", maxWidth: 680, position: "relative", animation: "fadeIn 1s ease", display: "flex", flexDirection: "column", alignItems: "center" }}>
-        <img src={SILVERFANG_LOGO} alt="SilverFang Library" style={{ display: "block", width: 180, height: 180, objectFit: "contain", margin: "0 auto", filter: "drop-shadow(0 0 30px rgba(59,130,246,0.4))" }} />
+      <div style={{ textAlign: "center", maxWidth: 480, width: "100%", position: "relative", animation: "fadeIn 1s ease", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <img src={SILVERFANG_LOGO} alt="SilverFang Library" style={{ display: "block", width: 150, height: 150, objectFit: "contain", margin: "0 auto", filter: "drop-shadow(0 0 30px rgba(59,130,246,0.4))" }} />
         <p style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: "#6b91af", letterSpacing: 5, marginBottom: 4, textTransform: "uppercase" }}>DIREWOLF AI presents</p>
-        <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: "clamp(22px, 5vw, 40px)", fontWeight: 700, color: "#e8f4ff", letterSpacing: 4, marginBottom: 4 }}>SILVERFANG LIBRARY</h1>
-        <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#4a7fa8", letterSpacing: 5, marginBottom: 28, textTransform: "uppercase" }}>AI-Powered Interactive Stories</p>
-        <div style={{ width: 80, height: 2, background: "linear-gradient(90deg, transparent, #3b82f6, transparent)", margin: "0 auto 32px" }} />
-        <p style={{ fontSize: 20, color: "#c9bfa8", lineHeight: 1.8, marginBottom: 48, fontStyle: "italic" }}>
+        <h1 style={{ fontFamily: "'Cinzel', serif", fontSize: "clamp(22px, 5vw, 38px)", fontWeight: 700, color: "#e8f4ff", letterSpacing: 4, marginBottom: 4 }}>SILVERFANG LIBRARY</h1>
+        <p style={{ fontFamily: "'Cinzel', serif", fontSize: 12, color: "#4a7fa8", letterSpacing: 5, marginBottom: 20, textTransform: "uppercase" }}>AI-Powered Interactive Stories</p>
+        <div style={{ width: 80, height: 2, background: "linear-gradient(90deg, transparent, #3b82f6, transparent)", margin: "0 auto 20px" }} />
+        <p style={{ fontSize: 16, color: "#c9bfa8", lineHeight: 1.7, marginBottom: 32, fontStyle: "italic" }}>
           Craft living stories with characters who remember, worlds that breathe, and scenes that come alive with images and sound — powered by Grok AI.
         </p>
-        <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap", marginBottom: 48 }}>
-          {["⚔️ Fantasy","🚀 Sci-Fi","🔍 Mystery","💕 Romance","👻 Horror","🤠 Western"].map(g => (
-            <span key={g} className="tag" style={{ fontSize: 14, padding: "6px 16px" }}>{g}</span>
-          ))}
+
+        {/* Sign-in section */}
+        <div className="card" style={{ width: "100%", padding: "24px", marginBottom: 24, animation: "fadeIn 1.2s ease" }}>
+          <p style={{ fontFamily: "'Cinzel', serif", fontSize: 11, color: "#6b7280", letterSpacing: 3, textAlign: "center", marginBottom: 16, textTransform: "uppercase" }}>Begin Your Story</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {oauthProviders.map(p => (
+              <button
+                key={p.id}
+                onClick={() => handleOAuth(p.id)}
+                disabled={!!loading}
+                style={{
+                  display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
+                  background: "#0a1120", border: "1px solid #1e2d3d", borderRadius: 6,
+                  color: "#e8dcc8", cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading && loading !== p.id ? 0.5 : 1,
+                  transition: "all 0.2s", width: "100%",
+                }}
+                onMouseEnter={e => { if (!loading) e.currentTarget.style.borderColor = p.color + "55"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "#1e2d3d"; }}
+              >
+                <span style={{ fontSize: 18, width: 24, textAlign: "center", color: p.color, fontWeight: "bold" }}>{p.icon}</span>
+                <span style={{ flex: 1, textAlign: "left", fontSize: 14, fontFamily: "'Cinzel', serif", letterSpacing: 0.5 }}>
+                  {loading === p.id ? "Connecting..." : p.label}
+                </span>
+              </button>
+            ))}
+          </div>
+          {error && <p style={{ color: "#ef4444", fontSize: 13, marginTop: 12, textAlign: "center" }}>{error}</p>}
         </div>
-        <button className="btn-primary" onClick={onStart} style={{ fontSize: 16, padding: "16px 48px" }}>Begin Your Story</button>
-        <div style={{ display: "flex", gap: 32, justifyContent: "center", marginTop: 48, flexWrap: "wrap" }}>
+
+        <div style={{ display: "flex", gap: 32, justifyContent: "center", flexWrap: "wrap" }}>
           {["✦ AI Characters","🖼️ Scene Images","🔊 Voice Narration","👥 Shared Stories"].map(f => (
             <div key={f} style={{ textAlign: "center", color: "#6b7280", fontSize: 13 }}>{f}</div>
           ))}
@@ -920,7 +965,7 @@ function AuthScreen({ onComplete, onBack }) {
         {error && <p style={{ color: "#ef4444", fontSize: 13, marginBottom: 12, textAlign: "center" }}>{error}</p>}
 
         <button className="btn-primary" onClick={handleEmailAuth} disabled={!!loading} style={{ width: "100%", justifyContent: "center", opacity: loading ? 0.7 : 1 }}>
-          {loading === "email" ? "..." : mode === "login" ? "Enter the Forge" : "Create My Account"}
+          {loading === "email" ? "..." : mode === "login" ? "Your Story Starts Here" : "Create My Account"}
         </button>
 
         {mode === "login" && (
@@ -1003,27 +1048,15 @@ function SubscriptionScreen({ currentTier, onSelect, onBack }) {
 // ============================================================
 function UserSetupScreen({ user, onComplete, onBack }) {
   const [name, setName] = useState(user?.displayName || "");
-  const [age, setAge] = useState("");
+  const [contentRating, setContentRating] = useState("T");
   const [preferredGenre, setPreferredGenre] = useState("fantasy");
-  const [ageError, setAgeError] = useState("");
+  const [nameError, setNameError] = useState("");
   const isMobile = useIsMobile();
 
-  const getContentRating = (ageVal) => {
-    const a = parseInt(ageVal);
-    if (isNaN(a)) return null;
-    if (a < 13) return "E";
-    if (a < 18) return "T";
-    return "M";
-  };
-
   const handleComplete = () => {
-    const a = parseInt(age);
-    if (!age || isNaN(a) || a < 4 || a > 120) { setAgeError("Please enter a valid age (4-120)."); return; }
-    if (!name.trim()) { setAgeError("Please enter your name."); return; }
-    onComplete({ name, age: a, contentRating: getContentRating(a), preferredGenre });
+    if (!name.trim()) { setNameError("Please enter your name."); return; }
+    onComplete({ name, contentRating, preferredGenre });
   };
-
-  const rating = getContentRating(age);
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
@@ -1038,19 +1071,27 @@ function UserSetupScreen({ user, onComplete, onBack }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div>
             <label style={{ fontSize: 12, color: "#6b7280", fontFamily: "'Cinzel', serif", letterSpacing: 1, textTransform: "uppercase" }}>What shall we call you?</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="Your storyteller name" style={{ marginTop: 8 }} />
+            <input value={name} onChange={e => { setName(e.target.value); setNameError(""); }} placeholder="Your storyteller name" style={{ marginTop: 8 }} />
+            {nameError && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{nameError}</p>}
           </div>
 
           <div>
-            <label style={{ fontSize: 12, color: "#6b7280", fontFamily: "'Cinzel', serif", letterSpacing: 1, textTransform: "uppercase" }}>
-              Your Age <span style={{ color: "#c9913a", fontSize: 10 }}>(sets content rating)</span>
+            <label style={{ fontSize: 12, color: "#6b7280", fontFamily: "'Cinzel', serif", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 8 }}>
+              Content Rating
             </label>
-            <input type="number" value={age} onChange={e => { setAge(e.target.value); setAgeError(""); }} placeholder="Age" style={{ marginTop: 8 }} />
-            {ageError && <p style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{ageError}</p>}
-            {rating && (
-              <div style={{ marginTop: 8, padding: "8px 12px", background: "#0a1a0a", border: "1px solid #22c55e33", borderRadius: 4 }}>
-                <span style={{ fontSize: 13, color: CONTENT_RATINGS[rating]?.color }}>{CONTENT_RATINGS[rating]?.label}</span>
-                <p style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{CONTENT_RATINGS[rating]?.description}</p>
+            <select
+              value={contentRating}
+              onChange={e => setContentRating(e.target.value)}
+              style={{ width: "100%" }}
+            >
+              {Object.entries(CONTENT_RATINGS).map(([key, val]) => (
+                <option key={key} value={key}>{val.label} — {val.description}</option>
+              ))}
+            </select>
+            {contentRating && (
+              <div style={{ marginTop: 8, padding: "8px 12px", background: "#0a1a0a", border: `1px solid ${CONTENT_RATINGS[contentRating]?.color}33`, borderRadius: 4 }}>
+                <span style={{ fontSize: 13, color: CONTENT_RATINGS[contentRating]?.color }}>{CONTENT_RATINGS[contentRating]?.label}</span>
+                <p style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{CONTENT_RATINGS[contentRating]?.description}</p>
               </div>
             )}
           </div>
@@ -1059,7 +1100,7 @@ function UserSetupScreen({ user, onComplete, onBack }) {
             <label style={{ fontSize: 12, color: "#6b7280", fontFamily: "'Cinzel', serif", letterSpacing: 1, textTransform: "uppercase", display: "block", marginBottom: 12 }}>Preferred Genre</label>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
               {Object.values(STORY_GENRES).map(g => {
-                const locked = g.minRating === "M" && !["M","A"].includes(getContentRating(age));
+                const locked = g.minRating === "M" && !["M","A"].includes(contentRating);
                 return (
                   <div key={g.id} onClick={() => !locked && setPreferredGenre(g.id)} style={{
                     padding: "10px 8px", borderRadius: 6, textAlign: "center", cursor: locked ? "not-allowed" : "pointer",
@@ -1164,7 +1205,7 @@ function PublicLibraryScreen({ user, onOpen, onBack }) {
   const isMobile = useIsMobile();
 
   const filtered = PUBLIC_LIBRARY_STORIES.filter(s => {
-    const ratingOk = CONTENT_RATINGS[s.rating]?.minAge <= (user?.age || 0) || !user?.age;
+    const ratingOk = CONTENT_RATINGS[s.rating]?.minAge <= (CONTENT_RATINGS[user?.contentRating]?.minAge || 0) || !user?.contentRating;
     const genreOk = filterGenre === "all" || s.genre === filterGenre;
     const searchOk = !search || s.title.toLowerCase().includes(search.toLowerCase()) || s.description.toLowerCase().includes(search.toLowerCase());
     return ratingOk && genreOk && searchOk;
@@ -1206,7 +1247,7 @@ function PublicLibraryScreen({ user, onOpen, onBack }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
         {filtered.map(story => {
-          const locked = CONTENT_RATINGS[story.rating]?.minAge > (user?.age || 0) && user?.age;
+          const locked = CONTENT_RATINGS[story.rating]?.minAge > (CONTENT_RATINGS[user?.contentRating]?.minAge || 0) && user?.contentRating;
           const genre = STORY_GENRES[story.genre];
           return (
             <div key={story.id} className={locked ? "card" : "card card-hover"} onClick={() => !locked && handleOpen(story)}
@@ -1372,7 +1413,7 @@ function StoryParamsScreen({ user, subscription, stories, initialGenre, onCreate
   const selectedGenre = STORY_GENRES[genre];
   const canCreate = stories.length < tier.stories;
 
-  const availableRatings = Object.entries(CONTENT_RATINGS).filter(([, v]) => v.minAge <= (user?.age || 0));
+  const availableRatings = Object.entries(CONTENT_RATINGS).filter(([k]) => CONTENT_RATINGS[k]?.minAge <= (CONTENT_RATINGS[user?.contentRating]?.minAge || 99));
 
   const INSTRUCTION_PROMPTS = {
     fantasy:  ["My protagonist is a disgraced knight seeking redemption","The magic system is based on music and sound","I want a slow-burn reluctant alliance between rivals","The villain believes they are the true hero"],
@@ -1751,7 +1792,7 @@ RESPONSE FORMAT: Narrative prose only. No meta-commentary. Address the reader as
           {/* Scene Image */}
           {(sceneImage || imageLoading) && (
             <div style={{ padding: isMobile ? "8px 12px" : "12px 24px", background: "#060d18", borderBottom: "1px solid #1e2d3d", flexShrink: 0 }}>
-              <div style={{ height: isMobile ? 130 : 200, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
+              <div style={{ height: isMobile ? 150 : 230, borderRadius: 8, overflow: "hidden", position: "relative", background: "#0a1120", border: "1px solid #1e2d3d" }}>
                 {imageLoading ? (
                   <div className="shimmer" style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <p style={{ color: "#3a4a5a", fontFamily: "'Cinzel', serif", fontSize: 12, letterSpacing: 2 }}>RENDERING SCENE...</p>
