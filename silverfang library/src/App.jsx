@@ -745,8 +745,8 @@ export default function StoryForgeApp() {
 // LANDING SCREEN (unchanged from original)
 // ============================================================
 function LandingScreen({ onStart }) {
-  const [loading, setLoading] = React.useState(null);
-  const [error, setError] = React.useState("");
+  const [loading, setLoading] = useState(null);
+  const [error, setError] = useState("");
 
   const handleOAuth = async (provider) => {
     setLoading(provider);
@@ -965,7 +965,7 @@ function AuthScreen({ onComplete, onBack }) {
         {error && <p style={{ color: "#ef4444", fontSize: 13, marginBottom: 12, textAlign: "center" }}>{error}</p>}
 
         <button className="btn-primary" onClick={handleEmailAuth} disabled={!!loading} style={{ width: "100%", justifyContent: "center", opacity: loading ? 0.7 : 1 }}>
-          {loading === "email" ? "..." : mode === "login" ? "Your Story Starts Here" : "Create My Account"}
+          {loading === "email" ? "..." : mode === "login" ? "Enter the Forge" : "Create My Account"}
         </button>
 
         {mode === "login" && (
